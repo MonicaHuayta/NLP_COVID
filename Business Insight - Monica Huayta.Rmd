@@ -1,0 +1,907 @@
+---
+title: "Business Insight - Covid Vaccine"
+author: "Monica Huayta"
+date: "12/5/2021"
+output: html_document
+---
+
+## COVID Vaccines in USA and UK
+
+For the following case study, we want to analyze the comments written by YouTube users within videos related to the topic of covid vaccines in the United States and the United Kingdom. For this, the scraping technique was carried out to extract the comments from YouTube and a correlative number was assigned to each comment that will serve as the document number.
+
+As a next step, an individual analysis by country will be carried out and finally a group comparison.
+
+## What do we expect?
+
+1. Find the most common words used by users.
+2. Group these words according to feelings, in order to conclude which is the most common feeling among YouTube users about this controversial topic.
+3. Find some common term patterns that can give some concise meaning.
+4. Group users according to common characteristics. In this way, it can be clustered for future use of the data.
+5. Compare both countries, conclude if they share opinions, and analyze the differences.
+
+## Analyzing USA
+
+```{r setup, include=FALSE}
+# Packages ----
+library(dplyr)
+library(tidytext)
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(tm)
+library(NLP)
+library(tidyr)
+library(scales)
+library(igraph)
+library(ggraph)
+library(widyr)
+library(topicmodels)
+
+# Setting my working directory ----
+setwd("/Users/monicahuaytadurand/Desktop/R-Studio/NLP/Personal Project")
+
+# Reading the databases ----
+Comment_USA <- read.csv("Comment_USA.csv", header=FALSE, sep=",", quote="'")
+Comment_UK  <- read.csv("Comment_UK.csv", header=FALSE, sep=",", quote="'")
+
+# Cleaning Comments from USA ----
+New_USA <- rbind(Comment_USA[,1],Comment_USA[,2])
+for (i in 3:ncol(Comment_USA)) {
+  New_USA <- rbind(New_USA,Comment_USA[,i])
+}
+
+New_USA <- as.data.frame(New_USA)
+New_USA_1 <- New_USA$V1
+New_USA_1 <- as.data.frame(New_USA_1)
+New_USA_1 <- New_USA_1 %>% rename(text = New_USA_1)
+New_USA_2 <- New_USA$V2
+New_USA_2 <- as.data.frame(New_USA_2)
+New_USA_2 <- New_USA_2 %>% rename(text = New_USA_2)
+New_USA_3 <- New_USA$V3
+New_USA_3 <- as.data.frame(New_USA_3)
+New_USA_3 <- New_USA_3 %>% rename(text = New_USA_3)
+New_USA_4 <- New_USA$V4
+New_USA_4 <- as.data.frame(New_USA_4)
+New_USA_4 <- New_USA_4 %>% rename(text = New_USA_4)
+
+base_USA <- rbind(New_USA_1,New_USA_2,New_USA_3,New_USA_4)
+
+index_USA <-as.data.frame(base_USA$text=="")
+base_USA <- base_USA[!index_USA,]
+base_USA <- as.data.frame(base_USA)
+colnames(base_USA) <- c("text")
+base_USA <- cbind.data.frame(id=c(1:nrow(base_USA)),text = base_USA$text)
+
+# Initial analysis of USA----
+tidy_USA   <- base_USA                        %>%  
+              unnest_tokens(word,text)        %>% 
+              anti_join(stop_words)           
+
+tokens_USA <- base_USA                        %>%  
+              unnest_tokens(word,text)        %>% 
+              anti_join(stop_words)           %>% 
+              count(word, sort=TRUE)          %>% 
+              mutate(word = reorder(word,n))
+
+top_n_USA <- tokens_USA  %>%
+              top_n(15,n)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(top_n_USA, aes(word,n)) + geom_col(show.legend = F) + 
+  coord_flip() + ggtitle("Top 15 USA tokens") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+As we can see, the most common tokens that we can find in the comments related to the USA are vaccine, people, and COVID. These tokens do not provide us with much information since they are naturally the most anticipated within these topics. On the other hand, we see that users mention Brandon, Joe Biden (president), kids, god, and fake. From this we can obtain the first conclusion: Users relate Joe Biden, god and fake with the covid vaccine in the USA.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Analyzing sentiments from USA-----
+sentiment_USA <- tidy_USA %>% 
+                 inner_join(get_sentiments("loughran")) %>% 
+                 count(word,sentiment, sort=T) %>% 
+                 ungroup()
+
+sentiment_USA %>%
+  group_by(sentiment) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  mutate(word=reorder(word, n)) %>%
+  ggplot(aes(word, n, fill=sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y")+
+  labs(y="Contribution to sentiment", x=NULL)+
+  coord_flip()
+```
+
+On the other hand, if we want to group the tokens in sentiments, we can observe 6 marked groups (making use of the Loughran database): Constraining, litigious, negative, positive, superfluous, and uncertainty. 
+
+As can be seen, there is a high frequency of words related to negative feelings such as lies, bad, wrong and fraud. The second most frequent group of feelings is constraining, with words such as mandates, comply, required, commit. In addition, one of the most common words is risk, within the group of feelings of uncertainty. In conclusion, the opinions of YouTube users on this issue are more negative. On the other hand, it should be emphasized that there are user groups that have positive opinions such as happy, positive, effective, and benefit.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Bigrams and quadrograms USA----
+
+# Bigrams
+USA_bigrams <- base_USA %>%
+               unnest_tokens(word,text, token="ngrams", n=2) %>% 
+               separate(word, c("word1","word2"), sep=" ") %>% 
+               filter(!word1 %in% stop_words$word) %>% 
+               filter(!word2 %in% stop_words$word) %>% 
+               count(word1, word2, sort=T)
+
+USA_bigraph <- USA_bigrams %>% 
+                filter(n>2) %>% 
+                graph_from_data_frame()
+
+ggraph(USA_bigraph, layout = "fr") +
+  geom_edge_link() +
+  geom_node_point() +
+  geom_node_text(aes(label=name), vjust=1, hjust=1)
+```
+
+In the following graphic, it can be concluded that: \newline
+
+1. There are opinions related to the climatic disaster, global warming, the moon, and planet earth. \newline
+2. There are opinions related to fake news and fake needles for vaccination. \newline
+3. There are opinions related to Bill Gates, Biden, and Trump.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Quadrograms  
+USA_quadrogram <- base_USA %>%
+  unnest_tokens(word,text, token="ngrams", n=4) %>% 
+  separate(word, c("word1","word2","word3","word4"), sep=" ") %>% 
+  filter(!word1 %in% stop_words$word) %>% 
+  filter(!word2 %in% stop_words$word) %>%
+  filter(!word3 %in% stop_words$word) %>% 
+  filter(!word4 %in% stop_words$word) %>% 
+  count(word1, word2, word3, word4, sort=T)
+
+USA_quadroraph <- USA_quadrogram %>% 
+  filter(n>1) %>% 
+  graph_from_data_frame()
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Correlation Pairwise USA ----
+word_cors_USA <- tidy_USA %>%
+  group_by(word) %>%
+  filter(n() >= 5) %>%
+  pairwise_cor(word, id, sort=TRUE)
+
+word_cors_USA %>%
+  filter(item1 %in% c("covid", "fake", "vaccine", "biden")) %>%
+  group_by(item1) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  mutate(item2 = reorder(item2, correlation)) %>%
+  ggplot(aes(item2, correlation)) +
+  geom_bar(stat = "identity")+
+  facet_wrap(~item1, scales = "free")+
+  coord_flip()
+```
+
+In addition, we want to know what words are highly correlated with important words as Biden, COVID, fake and vaccine. From the graphs, we find that: \newline
+
+1. Joe Biden is related with cut, administration, shut, party and worst. \newline
+2. Covid-19 vaccine is related with scary, immunity and flu. \newline
+3. Fake is related with needles, liars and news.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# LDA USA ----
+dtm_USA <- tidy_USA %>%
+           count(id, word) %>%
+           cast_dtm(id, word, n)
+
+LDA_USA <- LDA(dtm_USA, k=4, control=list(seed=123))
+USA_topics <- tidy(LDA_USA, matrix="beta")
+top_terms_USA <- USA_topics %>%
+                 group_by(topic) %>%
+                 top_n(10, beta) %>%
+                 ungroup() %>%
+                 arrange(topic, -beta)
+
+top_terms_USA %>%
+  mutate(term=reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend=FALSE) +
+  facet_wrap(~topic, scales = "free") +
+  coord_flip()  
+```
+
+Finally, from the graphs, we can split the tokens into 4 groups of comments, using the LDA technique. As we can recognize, the groups can be described as the following: \newline
+
+1. Group 1: Users commenting on the vaccine as an experiment and linking Joe Biden, lord and planet. \newline
+2. Group 2: Users commenting more about children related to vaccines. \newline
+3. Group 3: Users relating Biden with Trump inside the comments. \newline
+4. Group 4: Users relating the vaccine with fake.
+
+## Analyzing UK
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Cleaning Comments from UK ----
+New_UK <- rbind(Comment_UK[,1],Comment_UK[,2])
+for (i in 3:ncol(Comment_UK)) {
+  New_UK <- rbind(New_UK,Comment_UK[,i])
+}
+
+New_UK <- as.data.frame(New_UK)
+New_UK_1 <- New_UK$V1
+New_UK_1 <- as.data.frame(New_UK_1)
+New_UK_1 <- New_UK_1 %>% rename(text = New_UK_1)
+New_UK_2 <- New_UK$V2
+New_UK_2 <- as.data.frame(New_UK_2)
+New_UK_2 <- New_UK_2 %>% rename(text = New_UK_2)
+New_UK_3 <- New_UK$V3
+New_UK_3 <- as.data.frame(New_UK_3)
+New_UK_3 <- New_UK_3 %>% rename(text = New_UK_3)
+
+base_UK <- rbind(New_UK_1,New_UK_2,New_UK_3)
+index_UK <-as.data.frame(base_UK$text=="")
+base_UK <- base_UK[!index_UK,]
+base_UK <- as.data.frame(base_UK)
+colnames(base_UK) <- c("text")
+base_UK <- cbind.data.frame(id=c(1:nrow(base_UK)),text = base_UK$text)
+
+# Initial analysis for UK----
+tidy_UK  <- base_UK                          %>%
+            unnest_tokens(word,text)         %>% 
+            anti_join(stop_words)            
+
+tokens_UK <- base_UK                          %>%
+             unnest_tokens(word,text)         %>% 
+             anti_join(stop_words)            %>%
+             count(word, sort=TRUE)           %>% 
+             mutate(word = reorder(word,n))
+
+top_n_UK <- tokens_UK  %>% 
+             top_n(15,n)
+
+ggplot(top_n_UK, aes(word,n)) + geom_col(show.legend = F) + 
+  coord_flip() + ggtitle("Top 15 UK tokens") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+As we can see, the most common tokens that we can find in the comments related to the UK are vaccine, people, and COVID. Same as in the USA analysis, these tokens do not provide us with much information since they are naturally the most anticipated within these topics. On the other hand, we see that users mention Trump, lies and freedom.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Analyzing sentiments from UK-----
+sentiment_UK <- tidy_UK %>% 
+  inner_join(get_sentiments("loughran")) %>% 
+  count(word,sentiment, sort=T) %>% 
+  ungroup()
+
+sentiment_UK %>%
+  group_by(sentiment) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  mutate(word=reorder(word, n)) %>%
+  ggplot(aes(word, n, fill=sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y")+
+  labs(y="Contribution to sentiment", x=NULL)+
+  coord_flip()
+```
+As we can see, there is a difference between the sentiment of the words between the comments from USA videos and UK videos. It seems like the UK has fewer negative tokens, and they are related to corruption and criminals. Besides, we can see that the UK focus their attention on comments related to litigious sentiments, like legal, crimes, and legislation.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# # Bigrams and quadrograms Uk----
+# 
+# # Bigrams
+# UK_bigrams <- base_UK %>%
+#   unnest_tokens(word,text, token="ngrams", n=2) %>% 
+#   separate(word, c("word1","word2"), sep=" ") %>% 
+#   filter(!word1 %in% stop_words$word) %>% 
+#   filter(!word2 %in% stop_words$word) %>% 
+#   count(word1, word2, sort=T)
+# 
+# UK_bigraph <- UK_bigrams %>% 
+#   filter(n>2) %>% 
+#   graph_from_data_frame()
+# 
+# ggraph(UK_bigraph, layout = "fr") +
+#   geom_edge_link() +
+#   geom_node_point() +
+#   geom_node_text(aes(label=name), vjust=1, hjust=1)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# # Quadrograms  
+# UK_quadrogram <- base_USA %>%
+#   unnest_tokens(word,text, token="ngrams", n=4) %>% 
+#   separate(word, c("word1","word2","word3","word4"), sep=" ") %>% 
+#   filter(!word1 %in% stop_words$word) %>% 
+#   filter(!word2 %in% stop_words$word) %>%
+#   filter(!word3 %in% stop_words$word) %>% 
+#   filter(!word4 %in% stop_words$word) %>% 
+#   count(word1, word2, word3, word4, sort=T)
+# 
+# UK_quadroraph <- UK_quadrogram %>% 
+#   filter(n>2) %>% 
+#   graph_from_data_frame()
+# 
+# ggraph(UK_quadroraph, layout = "fr") +
+#   geom_edge_link() +
+#   geom_node_point() +
+#   geom_node_text(aes(label=name), vjust=1, hjust=1)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Correlation Pairwise UK ----
+word_cors_UK <- tidy_UK %>%
+  group_by(word) %>%
+  filter(n() >= 5) %>%
+  pairwise_cor(word, id, sort=TRUE)
+
+word_cors_UK %>%
+  filter(item1 %in% c("covid", "lies", "vaccine", "boris")) %>%
+  group_by(item1) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  mutate(item2 = reorder(item2, correlation)) %>%
+  ggplot(aes(item2, correlation)) +
+  geom_bar(stat = "identity")+
+  facet_wrap(~item1, scales = "free")+
+  coord_flip()
+```
+
+In addition, we want to know what words are highly correlated with important words as Boris, COVID, lies and vaccine. From the graphs, we find that: \newline
+
+1. Boris Jhonson is related Hancock and country passports. \newline
+2. Covid-19 is related science, people and future. \newline
+3. Lies is related with media, public, history and science. \newline
+4. Vaccine is related with safe, trial and death.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# word_cors_UK %>%
+#   filter(correlation >.7) %>%
+#   graph_from_data_frame() %>%
+#   ggraph(layout = "fr")+
+#   geom_edge_link(aes(edge_alpha = correlation), show.legend=F)+
+#   geom_node_point(color = "lightgreen", size=2)+
+#   geom_node_text(aes(label=name), repel=T)+
+#   theme_void()
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# LDA UK ----
+dtm_UK <- tidy_UK %>%
+  count(id, word) %>%
+  cast_dtm(id, word, n)
+
+LDA_UK <- LDA(dtm_UK, k=4, control=list(seed=123))
+UK_topics <- tidy(LDA_UK, matrix="beta")
+top_terms_UK <- UK_topics %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+top_terms_UK %>%
+  mutate(term=reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend=FALSE) +
+  facet_wrap(~topic, scales = "free") +
+  coord_flip()  
+```
+
+Finally, from the graphs, we can split the tokens into 4 groups of comments. As we can recognize, the groups can be described as the following: \newline
+
+1. Group 1: Users commenting about covid vaccine and the recombinant DNA. \newline
+2. Group 2: Users commenting about Trump, lies and president. \newline
+3. Group 3: Users relating the vaccine with teste and lockdown. \newline
+4. Group 4: Users relating the vaccine with freedom and media.
+
+## Comparing USA and UK
+
+With this comparison, we want to find the main similarities and differences of opinions between the two countries about covid vaccines.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Combining data between USA and UK----
+mixed_data <- bind_rows(mutate(tokens_USA, country="USA"),
+                        mutate(tokens_UK,  country="UK"))
+
+top_n_mixed <- mixed_data           %>% 
+               group_by(country) %>% 
+               top_n(15,n) %>% 
+               ungroup() %>% 
+               mutate(word2 = fct_reorder(word,n))
+
+ggplot(top_n_mixed, aes(x=word2, y=n, fill=country)) +
+  geom_col(show.legend=F) +
+  facet_wrap(~country, scales="free") +
+  coord_flip() +
+  ggtitle("Top 15 tokens in UK and USA") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+As can be seen, the common tokens between both countries are mainly vaccine, people and president. The interesting thing is that the UK repeatedly names Trump, despite not belonging to the UK. One of the common themes between both countries is lies and fake.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Analyzing correlograms and correlation----
+frequency <- bind_rows(mutate(tidy_USA, country="USA"),
+                       mutate(tidy_UK, country= "UK")) %>%
+             mutate(word=str_extract(word, "[a-z']+")) %>%
+             count(country, word) %>%
+             group_by(country) %>%
+             mutate(proportion = n/sum(n))%>%
+             select(-n) %>%
+             spread(country, proportion) %>%
+             gather(country, proportion, `UK`)
+
+ggplot(frequency, aes(x=proportion, y=`USA`, 
+  color = abs(`USA`- proportion)))+
+  geom_abline(color="grey40", lty=2)+
+  geom_jitter(alpha=.1, size=2.5, width=0.3, height=0.3)+
+  geom_text(aes(label=word), check_overlap = TRUE, vjust=1.5) +
+  scale_x_log10(labels = percent_format())+
+  scale_y_log10(labels= percent_format())+
+  scale_color_gradient(limits = c(0,0.001), low = "darkslategray4", high = "gray75")+
+  facet_wrap(~country, ncol=2)+
+  theme(legend.position = "none")+
+  labs(y= "USA", x=NULL)
+```
+
+If we compare both countries, in the following graph we obtain that the main differences are: \newline
+
+1. UK comments are more related to opinions about the Trump goverment, lies, legal problems and lockdown. \newline
+2. The US comments are more related to Joe Biden, CDC, children and God.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+print(cor.test(data=frequency[frequency$country == "UK",],
+         ~proportion + `USA`))
+```
+
+According to the Pearson correlation test, the token correlation between both countries is very strong (0.87). So it can be inferred that both countries have similar opinions.
+
+# Business Decision
+
+In the case of being a new company that will offer vaccines against covid or for a new virus, it must be planned correctly how the marketing strategy of the product will be applied due to the fact that there are quite negative comments, more in the USA than in the UK. On the other hand, when entering the UK market, the company must legally protect itself since this is a fairly important issue within the country according to the comments analyzed. In the case of the USA, care must be taken with the political issue as this greatly influences the opinions of customers.
+
+\pagebreak
+
+## Apendix
+
+Scraping the youtube comments in phyton:
+
+```{r eval=FALSE, include=T}
+# pip install google-api-python-client
+# pip install google-auth google-auth-oauthlib google-auth-httplib2
+# import json
+# from google.colab import files
+# uploaded = files.upload()
+# CLIENT_SECRETS_FILE = "client_secret2.json"
+# SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
+# API_SERVICE_NAME = 'youtube'
+# API_VERSION = 'v3'
+# import google.oauth2.credentials
+# import os
+# from googleapiclient.discovery import build
+# from googleapiclient.errors import HttpError
+# from google_auth_oauthlib.flow import InstalledAppFlow
+# def get_authenticated_service():
+#     flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRETS_FILE, SCOPES)
+#     credentials = flow.run_console()
+#     return build(API_SERVICE_NAME, API_VERSION, credentials = credentials)
+# if __name__ == '__main__':
+#     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+#     service = get_authenticated_service()  
+# def get_videos(service, **kwargs):
+#     final_results = []
+#     results = service.search().list(**kwargs).execute()
+# 
+#     i = 0
+#     max_pages = 3
+#     while results and i < max_pages:
+#         final_results.extend(results['items'])
+# 
+#         # Check if another page exists
+#         if 'nextPageToken' in results:
+#             kwargs['pageToken'] = results['nextPageToken']
+#             results = service.search().list(**kwargs).execute()
+#             i += 1
+#         else:
+#             break
+# 
+#     return final_results
+# 
+# keyword = input('Enter a keyword: ')
+# 
+# def get_video_comments(service, **kwargs):
+#     comments = []
+#     results = service.commentThreads().list(**kwargs).execute()
+# 
+#     while results:
+#         for item in results['items']:
+#             comment = item['snippet']['topLevelComment']['snippet']['textDisplay']
+#             comments.append(comment)
+# 
+#         if 'nextPageToken' in results:
+#             kwargs['pageToken'] = results['nextPageToken']
+#             results = service.commentThreads().list(**kwargs).execute()
+#         else:
+#             break
+# 
+#     return comments
+# 
+# def search_videos_by_keyword(service, **kwargs):
+#     results = get_videos(service, **kwargs)
+#     final_result = []
+#     for item in results:
+#         title = item['snippet']['title']
+#         video_id = item['id']['videoId']
+#         comments = get_video_comments(service, part='snippet', videoId=video_id, textFormat='plainText')
+#         final_result.extend([(video_id, title, comment) for comment in comments])
+#         
+#         print(comments)
+# 
+# search_videos_by_keyword(service, q=keyword, part='id,snippet', eventType='completed', type='video')    
+
+```
+
+Analyzing the results in R:
+
+```{r eval=FALSE, include=T}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+############################################################################
+###### Analysis of Youtube comments of COVID vaccine USA vs UK #############
+############### Hult Business School - Monica Huayta #######################
+############################################################################
+
+# Packages ----
+library(dplyr)
+library(tidytext)
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(tm)
+library(NLP)
+library(tidyr)
+library(scales)
+library(igraph)
+library(ggraph)
+library(widyr)
+library(topicmodels)
+
+# Setting my working directory ----
+setwd("/Users/monicahuaytadurand/Desktop/R-Studio/NLP/Personal Project")
+
+# Reading the databases ----
+Comment_USA <- read.csv("Comment_USA.csv", header=FALSE, sep=",", quote="'")
+Comment_UK  <- read.csv("Comment_UK.csv", header=FALSE, sep=",", quote="'")
+
+# Cleaning Comments from USA ----
+New_USA <- rbind(Comment_USA[,1],Comment_USA[,2])
+for (i in 3:ncol(Comment_USA)) {
+  New_USA <- rbind(New_USA,Comment_USA[,i])
+}
+
+New_USA <- as.data.frame(New_USA)
+New_USA_1 <- New_USA$V1
+New_USA_1 <- as.data.frame(New_USA_1)
+New_USA_1 <- New_USA_1 %>% rename(text = New_USA_1)
+New_USA_2 <- New_USA$V2
+New_USA_2 <- as.data.frame(New_USA_2)
+New_USA_2 <- New_USA_2 %>% rename(text = New_USA_2)
+New_USA_3 <- New_USA$V3
+New_USA_3 <- as.data.frame(New_USA_3)
+New_USA_3 <- New_USA_3 %>% rename(text = New_USA_3)
+New_USA_4 <- New_USA$V4
+New_USA_4 <- as.data.frame(New_USA_4)
+New_USA_4 <- New_USA_4 %>% rename(text = New_USA_4)
+
+base_USA <- rbind(New_USA_1,New_USA_2,New_USA_3,New_USA_4)
+
+index_USA <-as.data.frame(base_USA$text=="")
+base_USA <- base_USA[!index_USA,]
+base_USA <- as.data.frame(base_USA)
+colnames(base_USA) <- c("text")
+base_USA <- cbind.data.frame(id=c(1:nrow(base_USA)),text = base_USA$text)
+
+# Initial analysis of USA----
+tidy_USA   <- base_USA                        %>%  
+              unnest_tokens(word,text)        %>% 
+              anti_join(stop_words)           
+
+tokens_USA <- base_USA                        %>%  
+              unnest_tokens(word,text)        %>% 
+              anti_join(stop_words)           %>% 
+              count(word, sort=TRUE)          %>% 
+              mutate(word = reorder(word,n))
+
+top_n_USA <- tokens_USA  %>%
+              top_n(15,n)
+  
+ggplot(top_n_USA, aes(word,n)) + geom_col(show.legend = F) + 
+  coord_flip() + ggtitle("Top 15 USA tokens") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Analyzing sentiments from USA-----
+sentiment_USA <- tidy_USA %>% 
+                 inner_join(get_sentiments("loughran")) %>% 
+                 count(word,sentiment, sort=T) %>% 
+                 ungroup()
+
+sentiment_USA %>%
+  group_by(sentiment) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  mutate(word=reorder(word, n)) %>%
+  ggplot(aes(word, n, fill=sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y")+
+  labs(y="Contribution to sentiment", x=NULL)+
+  coord_flip()
+
+# Bigrams and quadrograms USA----
+
+# Bigrams
+USA_bigrams <- base_USA %>%
+               unnest_tokens(word,text, token="ngrams", n=2) %>% 
+               separate(word, c("word1","word2"), sep=" ") %>% 
+               filter(!word1 %in% stop_words$word) %>% 
+               filter(!word2 %in% stop_words$word) %>% 
+               count(word1, word2, sort=T)
+
+USA_bigraph <- USA_bigrams %>% 
+                filter(n>2) %>% 
+                graph_from_data_frame()
+
+ggraph(USA_bigraph, layout = "fr") +
+  geom_edge_link() +
+  geom_node_point() +
+  geom_node_text(aes(label=name), vjust=1, hjust=1)
+
+# Quadrograms  
+USA_quadrogram <- base_USA %>%
+  unnest_tokens(word,text, token="ngrams", n=4) %>% 
+  separate(word, c("word1","word2","word3","word4"), sep=" ") %>% 
+  filter(!word1 %in% stop_words$word) %>% 
+  filter(!word2 %in% stop_words$word) %>%
+  filter(!word3 %in% stop_words$word) %>% 
+  filter(!word4 %in% stop_words$word) %>% 
+  count(word1, word2, word3, word4, sort=T)
+
+USA_quadroraph <- USA_quadrogram %>% 
+  filter(n>1) %>% 
+  graph_from_data_frame()
+
+ggraph(USA_quadroraph, layout = "fr") +
+  geom_edge_link() +
+  geom_node_point() +
+  geom_node_text(aes(label=name), vjust=1, hjust=1)
+
+# Correlation Pairwise USA ----
+word_cors_USA <- tidy_USA %>%
+  group_by(word) %>%
+  filter(n() >= 5) %>%
+  pairwise_cor(word, id, sort=TRUE)
+
+word_cors_USA %>%
+  filter(item1 %in% c("covid", "fake", "vaccine", "biden")) %>%
+  group_by(item1) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  mutate(item2 = reorder(item2, correlation)) %>%
+  ggplot(aes(item2, correlation)) +
+  geom_bar(stat = "identity")+
+  facet_wrap(~item1, scales = "free")+
+  coord_flip()
+
+word_cors_USA %>%
+  filter(correlation >.7) %>%
+  graph_from_data_frame() %>%
+  ggraph(layout = "fr")+
+  geom_edge_link(aes(edge_alpha = correlation), show.legend=F)+
+  geom_node_point(color = "lightgreen", size=2)+
+  geom_node_text(aes(label=name), repel=T)+
+  theme_void()
+
+# LDA USA ----
+dtm_USA <- tidy_USA %>%
+           count(id, word) %>%
+           cast_dtm(id, word, n)
+
+LDA_USA <- LDA(dtm_USA, k=4, control=list(seed=123))
+USA_topics <- tidy(LDA_USA, matrix="beta")
+top_terms_USA <- USA_topics %>%
+                 group_by(topic) %>%
+                 top_n(10, beta) %>%
+                 ungroup() %>%
+                 arrange(topic, -beta)
+
+top_terms_USA %>%
+  mutate(term=reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend=FALSE) +
+  facet_wrap(~topic, scales = "free") +
+  coord_flip()  
+  
+# Cleaning Comments from UK ----
+New_UK <- rbind(Comment_UK[,1],Comment_UK[,2])
+for (i in 3:ncol(Comment_UK)) {
+  New_UK <- rbind(New_UK,Comment_UK[,i])
+}
+
+New_UK <- as.data.frame(New_UK)
+New_UK_1 <- New_UK$V1
+New_UK_1 <- as.data.frame(New_UK_1)
+New_UK_1 <- New_UK_1 %>% rename(text = New_UK_1)
+New_UK_2 <- New_UK$V2
+New_UK_2 <- as.data.frame(New_UK_2)
+New_UK_2 <- New_UK_2 %>% rename(text = New_UK_2)
+New_UK_3 <- New_UK$V3
+New_UK_3 <- as.data.frame(New_UK_3)
+New_UK_3 <- New_UK_3 %>% rename(text = New_UK_3)
+
+base_UK <- rbind(New_UK_1,New_UK_2,New_UK_3)
+index_UK <-as.data.frame(base_UK$text=="")
+base_UK <- base_UK[!index_UK,]
+base_UK <- as.data.frame(base_UK)
+colnames(base_UK) <- c("text")
+base_UK <- cbind.data.frame(id=c(1:nrow(base_UK)),text = base_UK$text)
+
+# Initial analysis for UK----
+tidy_UK  <- base_UK                          %>%
+            unnest_tokens(word,text)         %>% 
+            anti_join(stop_words)            
+
+tokens_UK <- base_UK                          %>%
+             unnest_tokens(word,text)         %>% 
+             anti_join(stop_words)            %>%
+             count(word, sort=TRUE)           %>% 
+             mutate(word = reorder(word,n))
+
+top_n_UK <- tokens_UK  %>% 
+             top_n(15,n)
+
+ggplot(top_n_UK, aes(word,n)) + geom_col(show.legend = F) + 
+  coord_flip() + ggtitle("Top 15 UK tokens") +
+  theme(plot.title = element_text(hjust = 0.5))
+ 
+# Analyzing sentiments from UK-----
+sentiment_UK <- tidy_UK %>% 
+  inner_join(get_sentiments("loughran")) %>% 
+  count(word,sentiment, sort=T) %>% 
+  ungroup()
+
+sentiment_UK %>%
+  group_by(sentiment) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  mutate(word=reorder(word, n)) %>%
+  ggplot(aes(word, n, fill=sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y")+
+  labs(y="Contribution to sentiment", x=NULL)+
+  coord_flip()
+
+# Bigrams and quadrograms Uk----
+
+# Bigrams
+UK_bigrams <- base_UK %>%
+  unnest_tokens(word,text, token="ngrams", n=2) %>% 
+  separate(word, c("word1","word2"), sep=" ") %>% 
+  filter(!word1 %in% stop_words$word) %>% 
+  filter(!word2 %in% stop_words$word) %>% 
+  count(word1, word2, sort=T)
+
+UK_bigraph <- UK_bigrams %>% 
+  filter(n>2) %>% 
+  graph_from_data_frame()
+
+ggraph(UK_bigraph, layout = "fr") +
+  geom_edge_link() +
+  geom_node_point() +
+  geom_node_text(aes(label=name), vjust=1, hjust=1)
+
+# Quadrograms  
+UK_quadrogram <- base_USA %>%
+  unnest_tokens(word,text, token="ngrams", n=4) %>% 
+  separate(word, c("word1","word2","word3","word4"), sep=" ") %>% 
+  filter(!word1 %in% stop_words$word) %>% 
+  filter(!word2 %in% stop_words$word) %>%
+  filter(!word3 %in% stop_words$word) %>% 
+  filter(!word4 %in% stop_words$word) %>% 
+  count(word1, word2, word3, word4, sort=T)
+
+UK_quadroraph <- UK_quadrogram %>% 
+  filter(n>2) %>% 
+  graph_from_data_frame()
+
+ggraph(UK_quadroraph, layout = "fr") +
+  geom_edge_link() +
+  geom_node_point() +
+  geom_node_text(aes(label=name), vjust=1, hjust=1)
+
+# Correlation Pairwise UK ----
+word_cors_UK <- tidy_UK %>%
+  group_by(word) %>%
+  filter(n() >= 5) %>%
+  pairwise_cor(word, id, sort=TRUE)
+
+word_cors_UK %>%
+  filter(item1 %in% c("covid", "fake", "vaccine", "boris")) %>%
+  group_by(item1) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  mutate(item2 = reorder(item2, correlation)) %>%
+  ggplot(aes(item2, correlation)) +
+  geom_bar(stat = "identity")+
+  facet_wrap(~item1, scales = "free")+
+  coord_flip()
+
+word_cors_UK %>%
+  filter(correlation >.7) %>%
+  graph_from_data_frame() %>%
+  ggraph(layout = "fr")+
+  geom_edge_link(aes(edge_alpha = correlation), show.legend=F)+
+  geom_node_point(color = "lightgreen", size=2)+
+  geom_node_text(aes(label=name), repel=T)+
+  theme_void()
+
+# LDA UK ----
+dtm_UK <- tidy_UK %>%
+  count(id, word) %>%
+  cast_dtm(id, word, n)
+
+LDA_UK <- LDA(dtm_UK, k=4, control=list(seed=123))
+UK_topics <- tidy(LDA_UK, matrix="beta")
+top_terms_UK <- UK_topics %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+top_terms_UK %>%
+  mutate(term=reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend=FALSE) +
+  facet_wrap(~topic, scales = "free") +
+  coord_flip()  
+
+# Combining data between USA and UK----
+mixed_data <- bind_rows(mutate(tokens_USA, country="USA"),
+                        mutate(tokens_UK,  country="UK"))
+
+top_n_mixed <- mixed_data           %>% 
+               group_by(country) %>% 
+               top_n(15,n) %>% 
+               ungroup() %>% 
+               mutate(word2 = fct_reorder(word,n))
+
+ggplot(top_n_mixed, aes(x=word2, y=n, fill=country)) +
+  geom_col(show.legend=F) +
+  facet_wrap(~country, scales="free") +
+  coord_flip() +
+  ggtitle("Top 15 tokens in UK and USA")
+
+# Analyzing correlograms and correlation----
+frequency <- bind_rows(mutate(tidy_USA, country="USA"),
+                       mutate(tidy_UK, country= "UK")) %>%
+             mutate(word=str_extract(word, "[a-z']+")) %>%
+             count(country, word) %>%
+             group_by(country) %>%
+             mutate(proportion = n/sum(n))%>%
+             select(-n) %>%
+             spread(country, proportion) %>%
+             gather(country, proportion, `UK`)
+
+ggplot(frequency, aes(x=proportion, y=`USA`, 
+  color = abs(`USA`- proportion)))+
+  geom_abline(color="grey40", lty=2)+
+  geom_jitter(alpha=.1, size=2.5, width=0.3, height=0.3)+
+  geom_text(aes(label=word), check_overlap = TRUE, vjust=1.5) +
+  scale_x_log10(labels = percent_format())+
+  scale_y_log10(labels= percent_format())+
+  scale_color_gradient(limits = c(0,0.001), low = "darkslategray4", high = "gray75")+
+  facet_wrap(~country, ncol=2)+
+  theme(legend.position = "none")+
+  labs(y= "USA", x=NULL)
+
+cor.test(data=frequency[frequency$country == "UK",],
+         ~proportion + `USA`)
+```
